@@ -39,23 +39,304 @@ def guardar_bd(datos):
         json.dump(datos, f, ensure_ascii=False, indent=4)
         f.truncate()
 
+# ==========================================
+# --- MODAL: BUSCADOR GENERAL Y FALTAS ---
+# ==========================================
+class ModalBuscadorGeneral(ctk.CTkToplevel):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent = parent
+        self.title("🔍 Buscador General de Personal y Faltas Disciplinarias")
+        self.geometry("1100x680")
+        self.grab_set()
+
+        self.COLOR_CARD = "#FFFFFF"
+        self.COLOR_BORDER = "#CBD5E1"
+        self.COLOR_TEXT_MAIN = "#0F172A"
+
+        self.setup_ui()
+        self.filtrar_resultados()
+
+    def setup_ui(self):
+        header_frame = ctk.CTkFrame(self, fg_color="#0F172A", corner_radius=0)
+        header_frame.pack(fill="x", padx=0, pady=0)
+
+        lbl_t = ctk.CTkLabel(header_frame, text="🔍 Buscador Global de Personal y Historial de Faltas", font=ctk.CTkFont(size=20, weight="bold"), text_color="#FFFFFF")
+        lbl_t.pack(anchor="w", padx=20, pady=(15, 5))
+
+        self.ent_search = ctk.CTkEntry(
+            header_frame, 
+            placeholder_text="Escriba Cédula, Nombre o cualquier texto para filtrar...", 
+            height=42, 
+            font=ctk.CTkFont(size=14)
+        )
+        self.ent_search.pack(fill="x", padx=20, pady=(5, 15))
+        self.ent_search.bind("<KeyRelease>", self.filtrar_resultados)
+        self.ent_search.focus_set()
+
+        table_card = ctk.CTkFrame(self, corner_radius=12, fg_color=self.COLOR_CARD, border_width=1, border_color=self.COLOR_BORDER)
+        table_card.pack(fill="both", expand=True, padx=20, pady=20)
+
+        self.tv_modal = ttk.Treeview(table_card, columns=("Nro", "ID", "Nombre", "Tipo", "Fecha", "Gravedad", "Motivo"), show="headings")
+        self.tv_modal.heading("Nro", text="N°")
+        self.tv_modal.heading("ID", text="Cédula / ID")
+        self.tv_modal.heading("Nombre", text="Nombre Completo")
+        self.tv_modal.heading("Tipo", text="Tipo Boleta")
+        self.tv_modal.heading("Fecha", text="Fecha")
+        self.tv_modal.heading("Gravedad", text="Gravedad")
+        self.tv_modal.heading("Motivo", text="Motivo / Descripción")
+
+        self.tv_modal.column("Nro", width=50, anchor="center")
+        self.tv_modal.column("ID", width=110, anchor="center")
+        self.tv_modal.column("Nombre", width=220)
+        self.tv_modal.column("Tipo", width=160)
+        self.tv_modal.column("Fecha", width=100, anchor="center")
+        self.tv_modal.column("Gravedad", width=110, anchor="center")
+        self.tv_modal.column("Motivo", width=280)
+
+        self.tv_modal.tag_configure("par", background="#F8FAFC")
+        self.tv_modal.tag_configure("impar", background="#FFFFFF")
+
+        sb = ttk.Scrollbar(table_card, orient="vertical", command=self.tv_modal.yview)
+        self.tv_modal.configure(yscrollcommand=sb.set)
+
+        self.tv_modal.pack(side="left", fill="both", expand=True, padx=(15, 0), pady=15)
+        sb.pack(side="right", fill="y", padx=(0, 15), pady=15)
+
+    def filtrar_resultados(self, event=None):
+        for item in self.tv_modal.get_children():
+            self.tv_modal.delete(item)
+
+        q = self.ent_search.get().lower().strip()
+        iconos = {"Baja": "🟢 Baja", "Media": "🟡 Media", "Alta": "🟠 Alta", "Urgente": "🔴 Urgente"}
+
+        idx = 0
+        for b in reversed(self.parent.bd["boletas"]):
+            pid = str(b.get("persona_id", ""))
+            pdata = self.parent.bd["personal"].get(pid, {})
+            pnombre = str(pdata.get("nombre", ""))
+            tipo = str(b.get("tipo", ""))
+            motivo = str(b.get("motivo", ""))
+
+            if not q or (q in pid.lower() or q in pnombre.lower() or q in tipo.lower() or q in motivo.lower()):
+                tag = "par" if idx % 2 == 0 else "impar"
+                grav_txt = iconos.get(b.get("gravedad"), b.get("gravedad"))
+                self.tv_modal.insert("", "end", values=(
+                    b.get("id_boleta"), pid, pnombre, tipo, b.get("fecha"), grav_txt, motivo
+                ), tags=(tag,))
+                idx += 1
+
+
+# ==========================================
+# --- MODAL: CONTEO Y MÉTRICAS POR USUARIO ---
+# ==========================================
+# ==========================================
+# --- MODAL: CONTEO Y MÉTRICAS POR USUARIO ---
+# ==========================================
+# ==========================================
+# --- MODAL: CONTEO Y MÉTRICAS POR USUARIO ---
+# ==========================================
+class ModalTotalBoletasUsuario(ctk.CTkToplevel):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent = parent
+        self.title("📊 Total de Boletas y Métricas por Personal")
+        self.geometry("980x640")
+        self.grab_set()
+
+        self.COLOR_CARD = "#FFFFFF"
+        self.COLOR_BORDER = "#CBD5E1"
+
+        self.setup_ui()
+        self.actualizar_combo_usuarios()
+
+    def setup_ui(self):
+        top_bar = ctk.CTkFrame(self, fg_color="#1E293B", corner_radius=0)
+        top_bar.pack(fill="x", padx=0, pady=0)
+
+        ctk.CTkLabel(top_bar, text="Filtrar Personal:", font=ctk.CTkFont(size=14, weight="bold"), text_color="#FFFFFF").pack(side="left", padx=(20, 5), pady=15)
+        
+        self.ent_search_user = ctk.CTkEntry(top_bar, placeholder_text="Buscar Cédula o Nombre...", width=200, height=38)
+        self.ent_search_user.pack(side="left", padx=5, pady=15)
+
+        self.combo_usuarios = ctk.CTkComboBox(top_bar, width=320, height=38, state="readonly", command=self.calcular_metricas_usuario)
+        self.combo_usuarios.pack(side="left", padx=10, pady=15)
+
+        # Se asigna el binding después de crear self.combo_usuarios para evitar el AttributeError
+        self.ent_search_user.bind("<KeyRelease>", self.actualizar_combo_usuarios)
+
+        self.kpi_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.kpi_frame.pack(fill="x", padx=20, pady=15)
+        self.kpi_frame.columnconfigure((0, 1, 2), weight=1)
+
+        self.lbl_tot_boletas = self.crear_card_stat(self.kpi_frame, 0, "Total Boletas", "0", "#2563EB", "#EFF6FF")
+        self.lbl_tot_urgentes = self.crear_card_stat(self.kpi_frame, 1, "Boletas Altas/Urgentes", "0", "#DC2626", "#FEF2F2")
+        self.lbl_tot_tipo = self.crear_card_stat(self.kpi_frame, 2, "Tipo Frecuente", "-", "#0D9488", "#CCFBF1")
+
+        table_card = ctk.CTkFrame(self, corner_radius=12, fg_color=self.COLOR_CARD, border_width=1, border_color=self.COLOR_BORDER)
+        table_card.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+        self.tv_user_boletas = ttk.Treeview(table_card, columns=("Nro", "Tipo", "Fecha", "Gravedad", "Motivo"), show="headings")
+        self.tv_user_boletas.heading("Nro", text="N°")
+        self.tv_user_boletas.heading("Tipo", text="Tipo Boleta")
+        self.tv_user_boletas.heading("Fecha", text="Fecha")
+        self.tv_user_boletas.heading("Gravedad", text="Gravedad")
+        self.tv_user_boletas.heading("Motivo", text="Motivo / Descripción")
+
+        self.tv_user_boletas.column("Nro", width=60, anchor="center")
+        self.tv_user_boletas.column("Tipo", width=180)
+        self.tv_user_boletas.column("Fecha", width=110, anchor="center")
+        self.tv_user_boletas.column("Gravedad", width=120, anchor="center")
+        self.tv_user_boletas.column("Motivo", width=340)
+
+        self.tv_user_boletas.pack(fill="both", expand=True, padx=15, pady=15)
+
+    def crear_card_stat(self, parent, col, titulo, valor, color_txt, color_bg):
+        card = ctk.CTkFrame(parent, corner_radius=10, fg_color=color_bg, border_width=1, border_color=self.COLOR_BORDER)
+        card.grid(row=0, column=col, padx=8, pady=5, sticky="ew")
+
+        lbl_v = ctk.CTkLabel(card, text=valor, font=ctk.CTkFont(size=24, weight="bold"), text_color=color_txt)
+        lbl_v.pack(padx=15, pady=(12, 0))
+
+        lbl_t = ctk.CTkLabel(card, text=titulo, font=ctk.CTkFont(size=12, weight="bold"), text_color="#64748B")
+        lbl_t.pack(padx=15, pady=(2, 12))
+        return lbl_v
+
+    def actualizar_combo_usuarios(self, event=None):
+        if not hasattr(self, 'combo_usuarios'):
+            return
+
+        q = self.ent_search_user.get().lower().strip() if hasattr(self, 'ent_search_user') else ""
+        lista = []
+        for pid, pdata in self.parent.bd["personal"].items():
+            nombre = pdata.get('nombre', '')
+            if not q or q in str(pid).lower() or q in nombre.lower():
+                lista.append(f"{pid} - {nombre}")
+
+        if lista:
+            self.combo_usuarios.configure(values=lista)
+            self.combo_usuarios.set(lista[0])
+            self.calcular_metricas_usuario(lista[0])
+        else:
+            self.combo_usuarios.configure(values=["No hay coincidencias"])
+            self.combo_usuarios.set("No hay coincidencias")
+            self.calcular_metricas_usuario("")
+
+    def calcular_metricas_usuario(self, choice):
+        for item in self.tv_user_boletas.get_children():
+            self.tv_user_boletas.delete(item)
+
+        if " - " not in choice:
+            self.lbl_tot_boletas.configure(text="0")
+            self.lbl_tot_urgentes.configure(text="0")
+            self.lbl_tot_tipo.configure(text="-")
+            return
+
+        pid = choice.split(" - ")[0].strip()
+        boletas_usr = [b for b in self.parent.bd["boletas"] if str(b.get("persona_id")) == pid]
+
+        tot = len(boletas_usr)
+        criticas = sum(1 for b in boletas_usr if b.get("gravedad") in ["Alta", "Urgente"])
+
+        tipos = [b.get("tipo") for b in boletas_usr if b.get("tipo")]
+        frecuente = max(set(tipos), key=tipos.count) if tipos else "-"
+
+        self.lbl_tot_boletas.configure(text=str(tot))
+        self.lbl_tot_urgentes.configure(text=str(criticas))
+        self.lbl_tot_tipo.configure(text=frecuente)
+
+        iconos = {"Baja": "🟢 Baja", "Media": "🟡 Media", "Alta": "🟠 Alta", "Urgente": "🔴 Urgente"}
+        for b in reversed(boletas_usr):
+            grav_txt = iconos.get(b.get("gravedad"), b.get("gravedad"))
+            self.tv_user_boletas.insert("", "end", values=(
+                b.get("id_boleta"), b.get("tipo"), b.get("fecha"), grav_txt, b.get("motivo")
+            ))
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.parent = parent
+        self.title("📊 Total de Boletas y Métricas por Personal")
+        self.geometry("980x640")
+        self.grab_set()
+
+        self.COLOR_CARD = "#FFFFFF"
+        self.COLOR_BORDER = "#CBD5E1"
+
+        self.setup_ui()
+        self.actualizar_combo_usuarios()
+
+    def setup_ui(self):
+        top_bar = ctk.CTkFrame(self, fg_color="#1E293B", corner_radius=0)
+        top_bar.pack(fill="x", padx=0, pady=0)
+
+        ctk.CTkLabel(top_bar, text="Filtrar Personal:", font=ctk.CTkFont(size=14, weight="bold"), text_color="#FFFFFF").pack(side="left", padx=(20, 5), pady=15)
+        
+        # Buscador directo para el combobox
+        self.ent_search_user = ctk.CTkEntry(top_bar, placeholder_text="Buscar Cédula o Nombre...", width=200, height=38)
+        self.ent_search_user.pack(side="left", padx=5, pady=15)
+        self.ent_search_user.bind("<KeyRelease>", self.actualizar_combo_usuarios)
+
+        self.combo_usuarios = ctk.CTkComboBox(top_bar, width=320, height=38, state="readonly", command=self.calcular_metricas_usuario)
+        self.combo_usuarios.pack(side="left", padx=10, pady=15)
+
+        self.kpi_frame = ctk.CTkFrame(self, fg_color="transparent")
+        self.kpi_frame.pack(fill="x", padx=20, pady=15)
+        self.kpi_frame.columnconfigure((0, 1, 2), weight=1)
+
+        self.lbl_tot_boletas = self.crear_card_stat(self.kpi_frame, 0, "Total Boletas", "0", "#2563EB", "#EFF6FF")
+        self.lbl_tot_urgentes = self.crear_card_stat(self.kpi_frame, 1, "Boletas Altas/Urgentes", "0", "#DC2626", "#FEF2F2")
+        self.lbl_tot_tipo = self.crear_card_stat(self.kpi_frame, 2, "Tipo Frecuente", "-", "#0D9488", "#CCFBF1")
+
+        table_card = ctk.CTkFrame(self, corner_radius=12, fg_color=self.COLOR_CARD, border_width=1, border_color=self.COLOR_BORDER)
+        table_card.pack(fill="both", expand=True, padx=20, pady=(0, 20))
+
+        self.tv_user_boletas = ttk.Treeview(table_card, columns=("Nro", "Tipo", "Fecha", "Gravedad", "Motivo"), show="headings")
+        self.tv_user_boletas.heading("Nro", text="N°")
+        self.tv_user_boletas.heading("Tipo", text="Tipo Boleta")
+        self.tv_user_boletas.heading("Fecha", text="Fecha")
+        self.tv_user_boletas.heading("Gravedad", text="Gravedad")
+        self.tv_user_boletas.heading("Motivo", text="Motivo / Descripción")
+
+        self.tv_user_boletas.column("Nro", width=60, anchor="center")
+        self.tv_user_boletas.column("Tipo", width=180)
+        self.tv_user_boletas.column("Fecha", width=110, anchor="center")
+        self.tv_user_boletas.column("Gravedad", width=120, anchor="center")
+        self.tv_user_boletas.column("Motivo", width=340)
+
+        self.tv_user_boletas.pack(fill="both", expand=True, padx=15, pady=15)
+
+    def actualizar_combo_usuarios(self, event=None):
+        q = self.ent_search_user.get().lower().strip() if hasattr(self, 'ent_search_user') else ""
+        lista = []
+        for pid, pdata in self.parent.bd["personal"].items():
+            nombre = pdata.get('nombre', '')
+            if not q or q in str(pid).lower() or q in nombre.lower():
+                lista.append(f"{pid} - {nombre}")
+
+        if lista:
+            self.combo_usuarios.configure(values=lista)
+            self.combo_usuarios.set(lista[0])
+            self.calcular_metricas_usuario(lista[0])
+        else:
+            self.combo_usuarios.configure(values=["No hay coincidencias"])
+            self.combo_usuarios.set("No hay coincidencias")
+            self.calcular_metricas_usuario("")
+
+# ==========================================
+# --- PANEL PRINCIPAL DASHBOARD ---
+# ==========================================
 class DashboardAdmin(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Sistema de Control Disciplinario — Panel de Control")
 
-        # --- APERTURA EN PANTALLA GIGANTE / MAXIMIZADA AUTOMÁTICA ---
-        self.update_idletasks()
+        # Maximizar ventana sin ocultar barra de tareas ni botones de control
         try:
-            self.state('zoomed') # Maximizado estándar
+            self.state("zoomed")  # Funciona en Windows
         except Exception:
-            # Fallback para sistemas macOS/Linux
-            anchura = self.winfo_screenwidth()
-            altura = self.winfo_screenheight()
-            self.geometry(f"{anchura}x{altura}+0+0")
+            self.attributes("-zoomed", True)  # Funciona en Linux (Parrot OS / X11)
+
         self.minsize(1100, 700)
 
-        # Paleta de Colores UI/UX
         self.COLOR_BG = "#F1F5F9"
         self.COLOR_SIDEBAR = "#0F172A"
         self.COLOR_CARD = "#FFFFFF"
@@ -67,6 +348,7 @@ class DashboardAdmin(ctk.CTk):
 
         self.bd = cargar_bd()
         self.boleta_id_actual = None
+        self.persona_seleccionada_boleta = None
 
         self.estilar_tablas()
 
@@ -100,9 +382,6 @@ class DashboardAdmin(ctk.CTk):
                   background=[("selected", "#2563EB")],
                   foreground=[("selected", "#FFFFFF")])
 
-    # ==========================================
-    # --- NAVBAR / SIDEBAR ---
-    # ==========================================
     def setup_sidebar(self):
         self.sidebar = ctk.CTkFrame(self, width=260, corner_radius=0, fg_color=self.COLOR_SIDEBAR)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
@@ -137,9 +416,6 @@ class DashboardAdmin(ctk.CTk):
         btn.grid(row=row_idx, column=0, padx=14, pady=4, sticky="ew")
         return btn
 
-    # ==========================================
-    # --- CONTENEDOR PRINCIPAL ---
-    # ==========================================
     def setup_contenido_principal(self):
         self.main_container = ctk.CTkFrame(self, corner_radius=0, fg_color="transparent")
         self.main_container.grid(row=0, column=1, sticky="nsew", padx=30, pady=25)
@@ -177,20 +453,51 @@ class DashboardAdmin(ctk.CTk):
         elif nombre_vista == "personal":
             self.vista_pers.pack(fill="both", expand=True)
         elif nombre_vista == "boletas":
+            self.filtrar_combo_personal_boleta()
             self.vista_boletas.pack(fill="both", expand=True)
         elif nombre_vista == "reportes":
+            self.actualizar_combo_filtro_usuarios()
             self.actualizar_tabla_reportes()
             self.vista_reportes.pack(fill="both", expand=True)
 
     # ==========================================
-    # --- VISTA 1: DASHBOARD CON KPIS ---
+    # --- VISTA 1: DASHBOARD CON MODALES ---
     # ==========================================
     def setup_vista_dashboard(self):
-        lbl_t = ctk.CTkLabel(self.vista_dash, text="Resumen de Actividad", font=ctk.CTkFont(size=24, weight="bold"), text_color=self.COLOR_TEXT_MAIN)
-        lbl_t.pack(anchor="w", pady=(0, 20))
+        top_frame = ctk.CTkFrame(self.vista_dash, fg_color="transparent")
+        top_frame.pack(fill="x", pady=(0, 15))
+
+        lbl_t = ctk.CTkLabel(top_frame, text="Resumen de Actividad General", font=ctk.CTkFont(size=24, weight="bold"), text_color=self.COLOR_TEXT_MAIN)
+        lbl_t.pack(side="left")
+
+        action_card = ctk.CTkFrame(self.vista_dash, corner_radius=12, fg_color=self.COLOR_CARD, border_width=1, border_color=self.COLOR_BORDER)
+        action_card.pack(fill="x", pady=(0, 20), padx=2)
+
+        lbl_s = ctk.CTkLabel(action_card, text="🔍 Búsqueda e Historial de Personal:", font=ctk.CTkFont(size=14, weight="bold"), text_color=self.COLOR_TEXT_MAIN)
+        lbl_s.pack(side="left", padx=15, pady=15)
+
+        btn_modal_search = ctk.CTkButton(
+            action_card, 
+            text="🔎 Abrir Buscador en Modal", 
+            fg_color="#2563EB", hover_color="#1D4ED8", 
+            font=ctk.CTkFont(size=13, weight="bold"), 
+            height=38,
+            command=self.abrir_modal_buscador
+        )
+        btn_modal_search.pack(side="left", padx=10, pady=15)
+
+        btn_modal_user_stats = ctk.CTkButton(
+            action_card, 
+            text="📊 Total Boletas por Usuario (Modal)", 
+            fg_color="#0D9488", hover_color="#0F766E", 
+            font=ctk.CTkFont(size=13, weight="bold"), 
+            height=38,
+            command=self.abrir_modal_total_usuario
+        )
+        btn_modal_user_stats.pack(side="left", padx=10, pady=15)
 
         kpi_frame = ctk.CTkFrame(self.vista_dash, fg_color="transparent")
-        kpi_frame.pack(fill="x", pady=(0, 25))
+        kpi_frame.pack(fill="x", pady=(0, 20))
         kpi_frame.columnconfigure((0, 1, 2, 3), weight=1)
 
         self.card1 = self.crear_kpi_card(kpi_frame, 0, "Total Personal", "0", "#2563EB", "#EFF6FF")
@@ -199,7 +506,7 @@ class DashboardAdmin(ctk.CTk):
         self.card4 = self.crear_kpi_card(kpi_frame, 3, "Atenciones Mes", "0", "#D97706", "#FEF3C7")
 
         lbl_rec = ctk.CTkLabel(self.vista_dash, text="Últimas Boletas Emitidas", font=ctk.CTkFont(size=16, weight="bold"), text_color=self.COLOR_TEXT_MAIN)
-        lbl_rec.pack(anchor="w", pady=(10, 10))
+        lbl_rec.pack(anchor="w", pady=(5, 10))
 
         card_table = ctk.CTkFrame(self.vista_dash, corner_radius=12, fg_color=self.COLOR_CARD, border_width=1, border_color=self.COLOR_BORDER)
         card_table.pack(fill="both", expand=True)
@@ -221,6 +528,12 @@ class DashboardAdmin(ctk.CTk):
         self.tv_dash.tag_configure("impar", background="#FFFFFF")
 
         self.tv_dash.pack(fill="both", expand=True, padx=15, pady=15)
+
+    def abrir_modal_buscador(self):
+        ModalBuscadorGeneral(self)
+
+    def abrir_modal_total_usuario(self):
+        ModalTotalBoletasUsuario(self)
 
     def crear_kpi_card(self, parent, col, titulo, valor, color_texto, color_bg):
         card = ctk.CTkFrame(parent, corner_radius=12, fg_color=color_bg, border_width=1, border_color=self.COLOR_BORDER)
@@ -248,8 +561,10 @@ class DashboardAdmin(ctk.CTk):
     def actualizar_tabla_resumen(self):
         for item in self.tv_dash.get_children():
             self.tv_dash.delete(item)
-        for idx, b in enumerate(reversed(self.bd["boletas"][-8:])):
-            pid = b.get("persona_id", "")
+
+        datos = list(reversed(self.bd["boletas"][-8:]))
+        for idx, b in enumerate(datos):
+            pid = str(b.get("persona_id", ""))
             pnombre = self.bd["personal"].get(pid, {}).get("nombre", "Desconocido")
             tag = "par" if idx % 2 == 0 else "impar"
             
@@ -291,6 +606,7 @@ class DashboardAdmin(ctk.CTk):
         ctk.CTkButton(btn_box, text="💾 Guardar", fg_color="#2563EB", hover_color="#1D4ED8", width=130, height=36, command=self.guardar_personal).pack(side="left", padx=8)
         ctk.CTkButton(btn_box, text="🧹 Limpiar", fg_color="#64748B", hover_color="#475569", width=120, height=36, command=self.limpiar_form_personal).pack(side="left", padx=8)
         ctk.CTkButton(btn_box, text="🗑️ Eliminar", fg_color="#EF4444", hover_color="#DC2626", width=130, height=36, command=self.eliminar_personal).pack(side="left", padx=8)
+        ctk.CTkButton(btn_box, text="📥 Importar Excel", fg_color="#0D9488", hover_color="#0F766E", width=150, height=36, command=self.importar_personal_excel).pack(side="left", padx=8)
 
         table_card = ctk.CTkFrame(self.vista_pers, corner_radius=12, fg_color=self.COLOR_CARD, border_width=1, border_color=self.COLOR_BORDER)
         table_card.pack(fill="both", expand=True)
@@ -333,7 +649,6 @@ class DashboardAdmin(ctk.CTk):
         messagebox.showinfo("Éxito", f"Personal '{nombre}' guardado.")
         self.limpiar_form_personal()
         self.actualizar_tabla_personal()
-        self.actualizar_combo_boletas()
 
     def limpiar_form_personal(self):
         self.ent_pers_id.configure(state="normal")
@@ -365,7 +680,6 @@ class DashboardAdmin(ctk.CTk):
                 guardar_bd(self.bd)
                 self.actualizar_tabla_personal()
                 self.limpiar_form_personal()
-                self.actualizar_combo_boletas()
 
     def actualizar_tabla_personal(self):
         for item in self.tv_personal.get_children():
@@ -373,6 +687,51 @@ class DashboardAdmin(ctk.CTk):
         for idx, (pid, pdata) in enumerate(self.bd["personal"].items()):
             tag = "par" if idx % 2 == 0 else "impar"
             self.tv_personal.insert("", "end", values=(pid, pdata.get("nombre", ""), pdata.get("cargo", ""), pdata.get("depto", "")), tags=(tag,))
+
+    def importar_personal_excel(self):
+        ruta = filedialog.askopenfilename(
+            title="Seleccionar archivo Excel de Personal",
+            filetypes=[("Archivos de Excel", "*.xlsx *.xls")]
+        )
+        if not ruta:
+            return
+
+        try:
+            df = pd.read_excel(ruta)
+            columnas = [str(c).lower().strip() for c in df.columns]
+
+            def buscar_col(posibles):
+                for p in posibles:
+                    for idx, c in enumerate(columnas):
+                        if p in c:
+                            return df.columns[idx]
+                return None
+
+            col_id = buscar_col(["id", "rut", "cedula", "identificacion", "codigo"])
+            col_nom = buscar_col(["nombre", "persona", "empleado", "trabajador"])
+            col_car = buscar_col(["cargo", "curso", "puesto", "rol"])
+            col_dep = buscar_col(["depto", "departamento", "seccion", "area"])
+
+            if not col_id or not col_nom:
+                messagebox.showerror("Error de Formato", "El archivo Excel debe contener al menos las columnas 'ID/Cédula' y 'Nombre'.")
+                return
+
+            registrados = 0
+            for _, row in df.iterrows():
+                pid = str(row[col_id]).strip()
+                nombre = str(row[col_nom]).strip()
+                cargo = str(row[col_car]).strip() if col_car and pd.notna(row[col_car]) else ""
+                depto = str(row[col_dep]).strip() if col_dep and pd.notna(row[col_dep]) else ""
+
+                if pid and nombre and pid.lower() != "nan" and nombre.lower() != "nan":
+                    self.bd["personal"][pid] = {"nombre": nombre, "cargo": cargo, "depto": depto}
+                    registrados += 1
+
+            guardar_bd(self.bd)
+            self.actualizar_tabla_personal()
+            messagebox.showinfo("Importación Exitosa", f"Se importaron {registrados} registros de personal correctamente.")
+        except Exception as e:
+            messagebox.showerror("Error de Importación", f"No se pudo procesar el archivo Excel.\nDetalle: {str(e)}")
 
     # ==========================================
     # --- VISTA 3: EMISIÓN DE BOLETAS ---
@@ -384,11 +743,18 @@ class DashboardAdmin(ctk.CTk):
         form_card = ctk.CTkFrame(self.vista_boletas, corner_radius=12, fg_color=self.COLOR_CARD, border_width=1, border_color=self.COLOR_BORDER)
         form_card.pack(fill="both", expand=True)
 
-        ctk.CTkLabel(form_card, text="Seleccionar Persona:", text_color=self.COLOR_TEXT_MAIN, font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=(20, 5), pady=15, sticky="w")
-        self.combo_personas = ctk.CTkComboBox(form_card, width=300, height=36, state="readonly", command=self.al_seleccionar_persona_boleta)
-        self.combo_personas.grid(row=0, column=1, padx=5, pady=15, sticky="w")
+        ctk.CTkLabel(form_card, text="Buscar Personal:", text_color=self.COLOR_TEXT_MAIN, font=ctk.CTkFont(weight="bold")).grid(row=0, column=0, padx=(20, 5), pady=15, sticky="w")
+        
+        search_box = ctk.CTkFrame(form_card, fg_color="transparent")
+        search_box.grid(row=0, column=1, padx=5, pady=15, sticky="w")
 
-        # Corrección aplicada: slant="italic"
+        self.ent_buscar_persona_boleta = ctk.CTkEntry(search_box, placeholder_text="Cédula, Nombre...", width=220, height=36)
+        self.ent_buscar_persona_boleta.pack(side="left", padx=(0, 5))
+        self.ent_buscar_persona_boleta.bind("<KeyRelease>", self.filtrar_combo_personal_boleta)
+
+        self.combo_personas = ctk.CTkComboBox(search_box, width=280, height=36, state="readonly", command=self.al_seleccionar_persona_boleta)
+        self.combo_personas.pack(side="left")
+
         self.lbl_info_persona = ctk.CTkLabel(
             form_card, 
             text="Cargo: - | Depto: -", 
@@ -428,29 +794,41 @@ class DashboardAdmin(ctk.CTk):
         ctk.CTkButton(btn_box, text="💾 Emitir / Guardar Boleta", fg_color="#2563EB", hover_color="#1D4ED8", font=ctk.CTkFont(size=14, weight="bold"), width=220, height=40, command=self.guardar_boleta).pack(side="left", padx=10)
         ctk.CTkButton(btn_box, text="🧹 Nueva Boleta", fg_color="#64748B", hover_color="#475569", font=ctk.CTkFont(size=14, weight="bold"), width=150, height=40, command=self.limpiar_form_boleta).pack(side="left", padx=10)
 
-        self.actualizar_combo_boletas()
+        self.filtrar_combo_personal_boleta()
 
-    def al_seleccionar_persona_boleta(self, choice):
-        pid = choice.split(" - ")[0]
-        pdata = self.bd["personal"].get(pid, {})
-        cargo = pdata.get("cargo", "N/A")
-        depto = pdata.get("depto", "N/A")
-        self.lbl_info_persona.configure(text=f"Cargo: {cargo} | Depto: {depto}")
+    def filtrar_combo_personal_boleta(self, event=None):
+        q = self.ent_buscar_persona_boleta.get().lower().strip()
+        lista = []
+        for pid, pdata in self.bd["personal"].items():
+            nombre = pdata.get('nombre', '')
+            if not q or q in str(pid).lower() or q in nombre.lower():
+                lista.append(f"{pid} - {nombre}")
 
-    def actualizar_combo_boletas(self):
-        lista = [f"{pid} - {pdata.get('nombre', '')}" for pid, pdata in self.bd["personal"].items()]
-        self.combo_personas.configure(values=lista)
         if lista:
+            self.combo_personas.configure(values=lista)
             self.combo_personas.set(lista[0])
             self.al_seleccionar_persona_boleta(lista[0])
+        else:
+            self.combo_personas.configure(values=["No hay coincidencias"])
+            self.combo_personas.set("No hay coincidencias")
+            self.lbl_info_persona.configure(text="Cargo: - | Depto: -")
+            self.persona_seleccionada_boleta = None
+
+    def al_seleccionar_persona_boleta(self, choice):
+        if " - " in choice:
+            pid = choice.split(" - ")[0].strip()
+            pdata = self.bd["personal"].get(pid, {})
+            cargo = pdata.get("cargo", "N/A")
+            depto = pdata.get("depto", "N/A")
+            self.lbl_info_persona.configure(text=f"Cargo: {cargo} | Depto: {depto}")
+            self.persona_seleccionada_boleta = pid
 
     def guardar_boleta(self):
-        persona_sel = self.combo_personas.get()
-        if not persona_sel:
-            messagebox.showwarning("Atención", "Debe registrar a una persona previamente.")
+        if not self.persona_seleccionada_boleta:
+            messagebox.showwarning("Atención", "Debe seleccionar a una persona de la lista.")
             return
 
-        pid = persona_sel.split(" - ")[0]
+        pid = self.persona_seleccionada_boleta
         tipo = self.combo_tipo_boleta.get()
         fecha = self.ent_fecha.get().strip()
         gravedad = self.combo_gravedad.get()
@@ -478,28 +856,40 @@ class DashboardAdmin(ctk.CTk):
 
     def limpiar_form_boleta(self):
         self.boleta_id_actual = None
+        self.ent_buscar_persona_boleta.delete(0, "end")
         self.txt_motivo.delete("1.0", "end")
         self.txt_sancion.delete("1.0", "end")
+        self.filtrar_combo_personal_boleta()
 
     # ==========================================
-    # --- VISTA 4: HISTORIAL ---
+    # --- VISTA 4: HISTORIAL Y REPORTES ---
     # ==========================================
     def setup_vista_reportes(self):
-        lbl_t = ctk.CTkLabel(self.vista_reportes, text="Historial General de Boletas", font=ctk.CTkFont(size=24, weight="bold"), text_color=self.COLOR_TEXT_MAIN)
+        lbl_t = ctk.CTkLabel(self.vista_reportes, text="Historial General y Filtrado por Personal", font=ctk.CTkFont(size=24, weight="bold"), text_color=self.COLOR_TEXT_MAIN)
         lbl_t.pack(anchor="w", pady=(0, 15))
 
         toolbar = ctk.CTkFrame(self.vista_reportes, corner_radius=12, fg_color=self.COLOR_CARD, border_width=1, border_color=self.COLOR_BORDER)
         toolbar.pack(fill="x", pady=(0, 15))
 
-        ctk.CTkLabel(toolbar, text="🔍 Buscar:", text_color=self.COLOR_TEXT_MAIN, font=ctk.CTkFont(weight="bold")).pack(side="left", padx=(15, 5), pady=12)
-        self.ent_buscar = ctk.CTkEntry(toolbar, placeholder_text="Filtrar por nombre, RUT, tipo o motivo...", width=280, height=36)
+        ctk.CTkLabel(toolbar, text="👤 Filtrar Usuario:", text_color=self.COLOR_TEXT_MAIN, font=ctk.CTkFont(weight="bold")).pack(side="left", padx=(15, 5), pady=12)
+        self.combo_filtro_usuario = ctk.CTkComboBox(toolbar, width=260, height=36, state="readonly", command=self.filtrar_boletas)
+        self.combo_filtro_usuario.pack(side="left", padx=5, pady=12)
+
+        ctk.CTkLabel(toolbar, text="🔍 Búsqueda Libre:", text_color=self.COLOR_TEXT_MAIN, font=ctk.CTkFont(weight="bold")).pack(side="left", padx=(15, 5), pady=12)
+        self.ent_buscar = ctk.CTkEntry(toolbar, placeholder_text="Filtrar por texto o motivo...", width=220, height=36)
         self.ent_buscar.pack(side="left", padx=5, pady=12)
         self.ent_buscar.bind("<KeyRelease>", self.filtrar_boletas)
 
-        ctk.CTkButton(toolbar, text="✏️ Editar Seleccionado", fg_color="#D97706", hover_color="#B45309", height=36, command=self.cargar_boleta_para_editar).pack(side="left", padx=8, pady=12)
-        ctk.CTkButton(toolbar, text="🗑️ Eliminar", fg_color="#EF4444", hover_color="#DC2626", height=36, command=self.eliminar_boleta).pack(side="left", padx=5, pady=12)
+        ctk.CTkButton(toolbar, text="✏️ Editar", fg_color="#D97706", hover_color="#B45309", height=36, width=90, command=self.cargar_boleta_para_editar).pack(side="left", padx=5, pady=12)
+        ctk.CTkButton(toolbar, text="🗑️ Eliminar", fg_color="#EF4444", hover_color="#DC2626", height=36, width=90, command=self.eliminar_boleta).pack(side="left", padx=5, pady=12)
         
         ctk.CTkButton(toolbar, text="📊 Exportar Excel", fg_color="#10B981", hover_color="#059669", font=ctk.CTkFont(weight="bold"), height=36, command=self.exportar_excel).pack(side="right", padx=15, pady=12)
+
+        self.card_user_stats = ctk.CTkFrame(self.vista_reportes, corner_radius=12, fg_color="#EFF6FF", border_width=1, border_color="#BFDBFE")
+        self.card_user_stats.pack(fill="x", pady=(0, 15))
+        
+        self.lbl_stats_usuario = ctk.CTkLabel(self.card_user_stats, text="Seleccione un usuario para ver su métrica individual.", font=ctk.CTkFont(size=13, weight="bold"), text_color="#1E40AF")
+        self.lbl_stats_usuario.pack(padx=15, pady=10, anchor="w")
 
         table_card = ctk.CTkFrame(self.vista_reportes, corner_radius=12, fg_color=self.COLOR_CARD, border_width=1, border_color=self.COLOR_BORDER)
         table_card.pack(fill="both", expand=True)
@@ -532,6 +922,11 @@ class DashboardAdmin(ctk.CTk):
 
         self.tv_boletas.bind("<Double-1>", lambda event: self.cargar_boleta_para_editar())
 
+    def actualizar_combo_filtro_usuarios(self):
+        lista = ["-- Todos los Usuarios --"] + [f"{pid} - {pdata.get('nombre', '')}" for pid, pdata in self.bd["personal"].items()]
+        self.combo_filtro_usuario.configure(values=lista)
+        self.combo_filtro_usuario.set("-- Todos los Usuarios --")
+
     def actualizar_tabla_reportes(self, boletas_lista=None):
         for item in self.tv_boletas.get_children():
             self.tv_boletas.delete(item)
@@ -539,7 +934,7 @@ class DashboardAdmin(ctk.CTk):
         datos = boletas_lista if boletas_lista is not None else self.bd["boletas"]
 
         for idx, b in enumerate(datos):
-            pid = b.get("persona_id", "")
+            pid = str(b.get("persona_id", ""))
             pnombre = self.bd["personal"].get(pid, {}).get("nombre", "Desconocido")
             tag = "par" if idx % 2 == 0 else "impar"
             
@@ -558,20 +953,32 @@ class DashboardAdmin(ctk.CTk):
             ), tags=(tag,))
 
     def filtrar_boletas(self, event=None):
+        usr_sel = self.combo_filtro_usuario.get()
         query = self.ent_buscar.get().lower().strip()
-        if not query:
-            self.actualizar_tabla_reportes()
-            return
 
-        filtradas = []
-        for b in self.bd["boletas"]:
-            pid = b.get("persona_id", "")
-            pnombre = self.bd["personal"].get(pid, {}).get("nombre", "").lower()
-            tipo = b.get("tipo", "").lower()
-            motivo = b.get("motivo", "").lower()
+        filtradas = self.bd["boletas"]
 
-            if query in pid.lower() or query in pnombre or query in tipo or query in motivo:
-                filtradas.append(b)
+        if usr_sel != "-- Todos los Usuarios --" and " - " in usr_sel:
+            pid_target = usr_sel.split(" - ")[0].strip()
+            filtradas = [b for b in filtradas if str(b.get("persona_id")) == pid_target]
+            
+            tot_user = len(filtradas)
+            criticos = sum(1 for b in filtradas if b.get("gravedad") in ["Alta", "Urgente"])
+            self.lbl_stats_usuario.configure(text=f"📊 Resumen de {usr_sel}: Total Boletas: {tot_user} | Casos Críticos: {criticos}")
+        else:
+            self.lbl_stats_usuario.configure(text="Resumen General: Mostrando todas las boletas del sistema.")
+
+        if query:
+            res = []
+            for b in filtradas:
+                pid = str(b.get("persona_id", ""))
+                pnombre = str(self.bd["personal"].get(pid, {}).get("nombre", "")).lower()
+                tipo = str(b.get("tipo", "")).lower()
+                motivo = str(b.get("motivo", "")).lower()
+
+                if query in pid.lower() or query in pnombre or query in tipo or query in motivo:
+                    res.append(b)
+            filtradas = res
 
         self.actualizar_tabla_reportes(filtradas)
 
@@ -586,11 +993,12 @@ class DashboardAdmin(ctk.CTk):
 
         if boleta_encontrada:
             self.boleta_id_actual = boleta_encontrada["id_boleta"]
-            pid = boleta_encontrada["persona_id"]
-            pnombre = self.bd["personal"].get(pid, {}).get("nombre", "")
+            pid = str(boleta_encontrada["persona_id"])
 
-            self.combo_personas.set(f"{pid} - {pnombre}")
-            self.al_seleccionar_persona_boleta(f"{pid} - {pnombre}")
+            self.ent_buscar_persona_boleta.delete(0, "end")
+            self.ent_buscar_persona_boleta.insert(0, pid)
+            self.filtrar_combo_personal_boleta()
+
             self.combo_tipo_boleta.set(boleta_encontrada.get("tipo", ""))
             self.ent_fecha.delete(0, "end")
             self.ent_fecha.insert(0, boleta_encontrada.get("fecha", ""))
@@ -617,7 +1025,7 @@ class DashboardAdmin(ctk.CTk):
             self.actualizar_tabla_reportes()
 
     # ==========================================
-    # --- EXPORTAR A EXCEL ---
+    # --- EXPORTACIÓN EXCEL ---
     # ==========================================
     def exportar_excel(self):
         if not self.bd["boletas"]:
@@ -637,7 +1045,7 @@ class DashboardAdmin(ctk.CTk):
 
         filas = []
         for b in self.bd["boletas"]:
-            pid = b.get("persona_id", "")
+            pid = str(b.get("persona_id", ""))
             pdata = self.bd["personal"].get(pid, {})
             
             filas.append({
